@@ -69,6 +69,7 @@ RUN \
         perl \
         unzip \
         zlib1g-dev \
+        git \
     && cd /tmp \
     && curl -fSL https://www.openssl.org/source/openssl-${RESTY_OPENSSL_VERSION}.tar.gz -o openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
     && tar xzf openssl-${RESTY_OPENSSL_VERSION}.tar.gz \
@@ -77,7 +78,9 @@ RUN \
     && curl -fSL https://openresty.org/download/openresty-${RESTY_VERSION}.tar.gz -o openresty-${RESTY_VERSION}.tar.gz \
     && tar xzf openresty-${RESTY_VERSION}.tar.gz \
     && cd /tmp/openresty-${RESTY_VERSION} \
+    && git clone -q https://github.com/wandenberg/nginx-push-stream-module.git bundle/nginx-push-stream-module \
     && sed -i 's/ --add-module=$dir"/ --add-dynamic-module=$dir"/' configure \
+    && export RESTY_CONFIG_OPTIONS="$RESTY_CONFIG_OPTIONS --add-dynamic-module=../nginx-push-stream-module" \
     && ./configure -j${RESTY_J} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} \
     && make -j${RESTY_J} \
     && make -j${RESTY_J} install \
