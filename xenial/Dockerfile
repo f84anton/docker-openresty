@@ -11,6 +11,8 @@ ARG RESTY_LUAROCKS_VERSION="2.3.0"
 ARG RESTY_OPENSSL_VERSION="1.0.2k"
 ARG RESTY_PCRE_VERSION="8.39"
 ARG RESTY_J="1"
+#    --with-compat \
+#    && make modules -j${RESTY_J} \
 ARG RESTY_CONFIG_OPTIONS="\
     --with-file-aio \
     --with-http_addition_module \
@@ -75,6 +77,7 @@ RUN \
     && curl -fSL https://openresty.org/download/openresty-${RESTY_VERSION}.tar.gz -o openresty-${RESTY_VERSION}.tar.gz \
     && tar xzf openresty-${RESTY_VERSION}.tar.gz \
     && cd /tmp/openresty-${RESTY_VERSION} \
+    && sed -i 's/ --add-module=$dir"/ --add-dynamic-module=$dir"/' configure \
     && ./configure -j${RESTY_J} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} \
     && make -j${RESTY_J} \
     && make -j${RESTY_J} install \
@@ -102,6 +105,25 @@ RUN \
 
 # Add additional binaries into PATH for convenience
 ENV PATH=$PATH:/usr/local/openresty/luajit/bin/:/usr/local/openresty/nginx/sbin/:/usr/local/openresty/bin/
+
+ENV LUA_MAGIC_ZIP='http://tsp-repositories.s3.amazonaws.com/yoshida-mediba-magick-46cfc96.zip'
+ENV LUAREQ_PACKAGES='libmagickwand-dev tzdata'
+ENV LUABUILD_PACKAGES='cmake libcurl4-openssl-dev git'
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN \
+    apt-get update -qq \
+    && apt-get install -qy --no-install-recommends --no-install-suggests ${LUAREQ_PACKAGES} ${LUABUILD_PACKAGES} \
+    && curl -o /tmp/magick.zip -sk "${LUA_MAGIC_ZIP}" \
+    && unzip -qo -d /tmp /tmp/magick.zip \
+    && cd /tmp/magick-master && luarocks make && cd / \
+    && luarocks install --server=http://luarocks.org/dev paths \
+    && luarocks install https://raw.githubusercontent.com/f84anton/luacurl/master/luacurl-1.2.1-1.rockspec \
+    && luarocks list \
+    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false ${LUABUILD_PACKAGES}  \
+    && rm -rf /tmp/magick* /var/lib/apt/lists/*
+
+RUN ln -fs /usr/share/zoneinfo/${TIMEZONE:-Europe/Moscow} /etc/localtime
 
 # TODO: remove any other apt packages?
 ENTRYPOINT ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
