@@ -129,3 +129,5 @@ RUN ln -fs /usr/share/zoneinfo/${TIMEZONE:-Europe/Moscow} /etc/localtime
 
 # TODO: remove any other apt packages?
 ENTRYPOINT ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
+
+EXPOSE 80 443
