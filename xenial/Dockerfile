@@ -109,7 +109,7 @@ RUN \
 ENV PATH=$PATH:/usr/local/openresty/luajit/bin/:/usr/local/openresty/nginx/sbin/:/usr/local/openresty/bin/
 
 ENV LUA_MAGIC_ZIP='http://tsp-repositories.s3.amazonaws.com/yoshida-mediba-magick-46cfc96.zip'
-ENV LUAREQ_PACKAGES='libmagickwand-dev tzdata'
+ENV LUAREQ_PACKAGES='libmagickwand-dev tzdata libcurl3'
 ENV LUABUILD_PACKAGES='cmake libcurl4-openssl-dev git'
 ENV DEBIAN_FRONTEND=noninteractive
 
