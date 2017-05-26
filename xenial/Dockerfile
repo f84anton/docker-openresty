@@ -79,7 +79,6 @@ RUN \
     && tar xzf openresty-${RESTY_VERSION}.tar.gz \
     && cd /tmp/openresty-${RESTY_VERSION} \
     && git clone -q https://github.com/wandenberg/nginx-push-stream-module.git bundle/nginx-push-stream-module \
-    && sed -i 's/ --add-module=$dir"/ --add-dynamic-module=$dir"/' configure \
     && export RESTY_CONFIG_OPTIONS="$RESTY_CONFIG_OPTIONS --add-dynamic-module=../nginx-push-stream-module" \
     && ./configure -j${RESTY_J} ${_RESTY_CONFIG_DEPS} ${RESTY_CONFIG_OPTIONS} \
     && make -j${RESTY_J} \
