@@ -120,10 +120,11 @@ RUN \
     && unzip -qo -d /tmp /tmp/magick.zip \
     && cd /tmp/magick-master && luarocks make && cd / \
     && luarocks install --server=http://luarocks.org/dev paths \
-    && luarocks install https://raw.githubusercontent.com/f84anton/luacurl/master/luacurl-1.2.1-1.rockspec \
+    && git clone https://github.com/f84anton/luacurl.git /tmp/luacurl && cd /tmp/luacurl \
+    && luarocks build luacurl-1.2.1-1.rockspec && cd / \
     && luarocks list \
     && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false ${LUABUILD_PACKAGES}  \
-    && rm -rf /tmp/magick* /var/lib/apt/lists/*
+    && rm -rf /tmp/magick* /var/lib/apt/lists/* /tmp/luacurl
 
 RUN ln -fs /usr/share/zoneinfo/${TIMEZONE:-Europe/Moscow} /etc/localtime
 
