@@ -122,6 +122,7 @@ RUN \
     && luarocks install --server=http://luarocks.org/dev paths \
     && git clone https://github.com/f84anton/luacurl.git /tmp/luacurl && cd /tmp/luacurl \
     && luarocks build luacurl-1.2.1-1.rockspec && cd / \
+    && luarocks install Lua-cURL \
     && luarocks list \
     && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false ${LUABUILD_PACKAGES}  \
     && rm -rf /tmp/magick* /var/lib/apt/lists/* /tmp/luacurl
