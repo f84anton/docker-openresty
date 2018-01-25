@@ -8,11 +8,13 @@
 - [`centos`, (*centos/Dockerfile*)](https://github.com/openresty/docker-openresty/blob/master/centos/Dockerfile)
 - [`centos-rpm`, (*centos-rpm/Dockerfile*)](https://github.com/openresty/docker-openresty/blob/master/centos-rpm/Dockerfile)
 - [`jessie`, (*jessie/Dockerfile*)](https://github.com/openresty/docker-openresty/blob/master/jessie/Dockerfile)
+- [`stretch`, (*stretch/Dockerfile*)](https://github.com/openresty/docker-openresty/blob/master/stretch/Dockerfile)
 - [`trusty`, (*trusty/Dockerfile*)](https://github.com/openresty/docker-openresty/blob/master/trusty/Dockerfile)
 - [`wheezy`, (*wheezy/Dockerfile*)](https://github.com/openresty/docker-openresty/blob/master/wheezy/Dockerfile)
 - [`xenial`, (*xenial/Dockerfile*)](https://github.com/openresty/docker-openresty/blob/master/xenial/Dockerfile)
 
 [![](https://images.microbadger.com/badges/image/openresty/openresty.svg)](https://microbadger.com/#/images/openresty/openresty "Get your own image badge on microbadger.com")
+
 
 Table of Contents
 =================
@@ -21,12 +23,15 @@ Table of Contents
 * [Usage](#usage)
 * [OPM](#opm)
 * [LuaRocks](#luarocks)
-* [Docker ENTRYPOINT](#docker-entrypoint)
-* [Building (non-RPM based)](#building-non-rpm-based)
+* [Tips & Pitfalls](#tips--pitfalls)
+* [Docker CMD](#docker-entrypoint)
+* [Building (from source)](#building-from-source)
 * [Building (RPM based)](#building-rpm-based)
-* [Feedback & Bug Reports](#feedback-bug-reports)
-* [Changelog](#changelog)
+* [Building (DEB based)](#building-deb-based)
+* [Feedback & Bug Reports](#feedback--bug-reports)
+* [Changelog & Authors](#changelog--authors)
 * [Copyright & License](#copyright--license)
+
 
 Description
 ===========
@@ -38,7 +43,7 @@ Docker is a container management platform.
 OpenResty is a full-fledged web application server by bundling the standard nginx core,
 lots of 3rd-party nginx modules, as well as most of their external dependencies.
 
-From non-RPM flavors, the following modules are included by default, but one can easily increase or decrease that with [custom build options](#build-options) :
+From non-RPM/DEB flavors, the following modules are included by default, but one can easily increase or decrease that with [custom build options](#build-options) :
 
  * file-aio
  * http_addition_module
@@ -69,6 +74,7 @@ From non-RPM flavors, the following modules are included by default, but one can
  * stream_ssl_module
  * threads
 
+
 Usage
 =====
 
@@ -82,12 +88,30 @@ docker run [options] openresty/openresty:trusty
 
 `docker-openresty` symlinks `/usr/local/openresty/nginx/logs/access.log` and `error.log` to `/dev/stdout` and `/dev/stderr` respectively, so that Docker logging works correctly.  If you change the log paths in your `nginx.conf`, you should symlink those paths as well.
 
+nginx config files
+==================
+
+The Docker tooling installs its own [`nginx.conf` file](https://github.com/openresty/docker-openresty/blob/master/nginx.conf).  If you want to directly override it, you can replace it in your own Dockerfile or via volume bind-mounting.
+
+That `nginx.conf` has the directive `include /etc/nginx/conf.d/*.conf;` so all nginx configurations in that directory will be included.  The [default virtual host configuration](https://github.com/openresty/docker-openresty/blob/master/nginx.vh.default.conf) has the original OpenResty configuration and is copied to `/etc/nginx/conf.d/default.conf`. 
+
+You can override that `default.conf` directly or volume bind-mount the `/etc/nginx/conf.d` directory to your own set of configurations:
+
+```
+docker run -v /my/custom/conf.d:/etc/nginx/conf.d openresty/openresty:alpine
+```
+
 OPM
 ===
 
 Starting at version 1.11.2.2, OpenResty includes a [package manager called `opm`](https://github.com/openresty/opm#readme), which can be found at `/usr/local/openresty/bin/opm`.
 
-`opm` is built in all the images.  However, to use it in the `alpine` image, you must also install the `perl` package; it is not included by default because it doubles the image size.  You may install it like so: `apk add --no-cache perl`.
+`opm` is built in all the images except `alpine` and `stretch`.
+
+To use `opm` in the `alpine` image, you must also install the `curl` and `perl` packages; they are not included by default because they double the image size.  You may install them like so: `apk add --no-cache curl perl`.
+
+To use `opm` in the `stretch` image, you must also install the `openresty-opm` package as shown in [this example](https://github.com/openresty/docker-openresty/blob/master/stretch/Dockerfile.opm_example).
+
 
 LuaRocks
 ========
@@ -100,21 +124,39 @@ It is available at `/usr/local/openresty/luajit/bin/luarocks`.  Packages can be 
 RUN /usr/local/openresty/luajit/bin/luarocks install <rock>
 ```
 
-Docker ENTRYPOINT
-=================
 
-The `-g "daemon off;"` directive is used in the Dockerfile ENTRYPOINT to keep the Nginx daemon running after container creation. If this directive is added to the nginx.conf, then it may be omitted from the ENTRYPOINT.
+Tips & Pitfalls
+===============
 
-To invoke with another ENTRYPOINT, for example the `resty` utility, invoke like so:
+ * The `envsubst` utility is included in all images except `alpine`; this utility is also included
+ in the Nginx docker image and is used to template environment variables into configuration files.
 
+ * **Docker Hub** does not currently support ARM builds, thus the `armhf-xenial` image is not available. (See [#26](https://github.com/openresty/docker-openresty/pull/26))
+
+ * By default, OpenResty is built with SSE4.2 optimizations if the build machine supports it.  If run on machine without SSE4.2, there will be [invalid opcode issues](https://github.com/openresty/docker-openresty/issues/39). **Thus all the Docker Hub images require SSE4.2.**  You can [build a custom image from source](#building-from-source) explicitly without SSE4.2 support, using build arguments like so:
 ```
-docker run [options] --entrypoint /usr/local/openresty/bin/resty openresty/openresty:xenial [script.lua]
+docker build -f xenial/Dockerfile --build-arg "RESTY_CONFIG_OPTIONS_MORE=--with-luajit-xcflags='-mno-sse4.2'" .
+```
+
+
+Docker CMD
+==========
+
+The `-g "daemon off;"` directive is used in the Dockerfile CMD to keep the Nginx daemon running after container creation. If this directive is added to the nginx.conf, then the `docker run` should explicitly invoke `openresty`:
+```
+docker run [options] openresty/openresty:xenial openresty
+```
+
+Invoke another CMD, for example the `resty` utility, like so:
+```
+docker run [options] openresty/openresty:xenial resty [script.lua]
 ```
 
 *NOTE* The `alpine` images do not include the packages `perl` and `ncurses`, which is needed by the `resty` utility.
 
-Building (non-RPM based)
-========================
+
+Building (from source)
+======================
 
 This Docker image can be built and customized by cloning the repo and running `docker build` with the desired Dockerfile:
 
@@ -144,19 +186,21 @@ docker build --build-arg RESTY_J=4 -f trusty/Dockerfile .
 
 | Key | Default | Description |
 :----- | :-----: |:----------- |
-|RESTY_VERSION | 1.11.2.4 | The version of OpenResty to use. |
-|RESTY_LUAROCKS_VERSION | 2.3.0 | The version of LuaRocks to use. |
+|RESTY_VERSION | 1.13.6.1 | The version of OpenResty to use. |
+|RESTY_LUAROCKS_VERSION | 2.4.3 | The version of LuaRocks to use. |
 |RESTY_OPENSSL_VERSION | 1.0.2k | The version of OpenSSL to use. |
-|RESTY_PCRE_VERSION | 8.39 | The version of PCRE to use. |
+|RESTY_PCRE_VERSION | 8.41 | The version of PCRE to use. |
 |RESTY_J | 1 | Sets the parallelism level (-jN) for the builds. |
-|RESTY_CONFIG_OPTIONS | "--with-file-aio --with-http_addition_module --with-http_auth_request_module --with-http_dav_module --with-http_flv_module --with-http_geoip_module=dynamic --with-http_gunzip_module --with-http_gzip_static_module --with-http_image_filter_module=dynamic --with-http_mp4_module --with-http_perl_module=dynamic --with-http_random_index_module --with-http_realip_module --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module --with-http_stub_status_module --with-http_sub_module --with-http_v2_module --with-http_xslt_module=dynamic --with-ipv6 --with-mail --with-mail_ssl_module --with-md5-asm --with-pcre-jit --with-sha1-asm --with-stream --with-stream_ssl_module --with-threads" | The options to pass to OpenResty's `./configure` script. |
+|RESTY_CONFIG_OPTIONS | "--with-file-aio --with-http_addition_module --with-http_auth_request_module --with-http_dav_module --with-http_flv_module --with-http_geoip_module=dynamic --with-http_gunzip_module --with-http_gzip_static_module --with-http_image_filter_module=dynamic --with-http_mp4_module --with-http_perl_module=dynamic --with-http_random_index_module --with-http_realip_module --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module --with-http_stub_status_module --with-http_sub_module --with-http_v2_module --with-http_xslt_module=dynamic --with-ipv6 --with-mail --with-mail_ssl_module --with-md5-asm --with-pcre-jit --with-sha1-asm --with-stream --with-stream_ssl_module --with-threads" | Options to pass to OpenResty's `./configure` script. |
+|RESTY_CONFIG_OPTIONS_MORE | "" | More options to pass to OpenResty's `./configure` script. |
 
 [Back to TOC](#table-of-contents)
+
 
 Building (RPM based)
 ====================
 
-OpenResty now now has [RPMs available](http://openresty.org/en/rpm-packages.html).  The `centos-rpm` images use these RPMs rather than the build system described above.
+OpenResty now now has [RPMs available](http://openresty.org/en/rpm-packages.html).  The `centos-rpm` images use these RPMs rather than building from source.
 
 This Docker image can be built and customized by cloning the repo and running `docker build` with the desired Dockerfile:
 
@@ -165,16 +209,43 @@ This Docker image can be built and customized by cloning the repo and running `d
 The following are the available build-time options. They can be set using the `--build-arg` CLI argument, like so:
 
 ```
-docker build --build-arg RESTY_RPM_FLAVOR="-debug" -f centos-rpm/Dockerfile centos-rpm
+docker build --build-arg RESTY_RPM_FLAVOR="-debug" centos-rpm
 ```
 
 | Key | Default | Description |
 :----- | :-----: |:----------- |
 |RESTY_LUAROCKS_VERSION | 2.3.0 | The version of LuaRocks to use. |
 |RESTY_RPM_FLAVOR | "" | The `openresty` package flavor to use.  Possibly `"-debug"` or `"-valgrind"`. |
-|RESTY_RPM_VERSION | 1.11.2.4-1.el7.centos.x86_64 | The `openresty` package version to install. |
+|RESTY_RPM_VERSION | 1.11.2.5-1.el7.centos | The `openresty` package version to install. |
+|RESTY_RPM_ARCH | x86_64 | The `openresty` package architecture to install. |
 
 [Back to TOC](#table-of-contents)
+
+
+Building (DEB based)
+====================
+
+OpenResty now now has [Debian Packages (DEBs) available](http://openresty.org/en/deb-packages.html).  The `stretch` image use these DEBs rather than building from source.
+
+You can derive your own Docker images from this to install your own packages.  See [Dockerfile.opm_example](https://github.com/openresty/docker-openresty/blob/master/stretch/Dockerfile.opm_example) and [Dockerfile.luarocks_example](https://github.com/openresty/docker-openresty/blob/master/stretch/Dockerfile.luarocks_example).
+
+This Docker image can be built and customized by cloning the repo and running `docker build` with the desired Dockerfile:
+
+ * [Debian Stretch 9 DEB](https://github.com/openresty/docker-openresty/blob/master/stretch/Dockerfile) (`stretch/Dockerfile`)
+
+The following are the available build-time options. They can be set using the `--build-arg` CLI argument, like so:
+
+```
+docker build --build-arg RESTY_DEB_FLAVOR="-debug" -f stretch/Dockerfile stretch
+```
+
+| Key | Default | Description |
+:----- | :-----: |:----------- |
+|RESTY_DEB_FLAVOR  | "" | The `openresty` package flavor to use.  Possibly `"-debug"` or `"-valgrind"`. |
+|RESTY_DEB_VERSION | "=1.13.6.1-1~stretch1" | The Debian package version to use, with `=` prepended. |
+
+[Back to TOC](#table-of-contents)
+
 
 Feedback & Bug Reports
 ======================
@@ -185,66 +256,22 @@ https://github.com/openresty/docker-openresty/issues
 
 [Back to TOC](#table-of-contents)
 
-Changelog
-=========
 
-## 1.11.2.4
+Changelog & Authors
+===================
 
- * Upgraded OpenResty to 1.11.2.4
- * Update `centos-rpm` to 1.11.2.4-1
-
-## 1.11.2.3
-
- * Upgraded OpenResty to 1.11.2.3
- * Upgraded OpenSSL to 1.0.2k
- * Update `centos-rpm` to 1.11.2.3-1
-
-## 2017-Apr-10
-
- * Change PCRE download URL to https://ftp.pcre.org/pub/pcre
-
-## 2017-Feb-19
-
- * Add `armhf-xenial` image
- * Update `centos-rpm` to 1.11.2.2-8
-
-## 2016-Nov-28
-
- * Add `alpine-fat` image
- * Remove 'latest' tags
-
-## 1.11.2.2
-
- * Upgraded OpenResty to 1.11.2.2
- * Add resty-opm package to `centos-rpm`
-
-## 2016-Oct-26
-
- * Added Debian Jessie and Wheezy Builds
- * Upgraded OpenSSL to 1.0.2j
-
-## 1.11.2.1
-
- * Upgraded OpenResty to 1.11.2.1
- * Upgraded PCRE to 8.39
- * Updated ENTRYPOINT to use the new symlink `/usr/local/openresty/bin/openresty`
- * `centos-rpm` now has the build argument `RESTY_RPM_VERSION` and ENTRYPOINT `/usr/bin/openresty`
-
-## 1.9.15.1
-
- * Upgraded OpenResty to 1.9.15.1
- * Logging is redirected to /dev/stdout and /dev/stderr
- * Introduced ENTRYPOINT with the `-g "daemon off;"` directive
- * Add `centos-rpm` base system, using upstream RPM packaging
+ * [CHANGELOG](https://github.com/openresty/docker-openresty/blob/master/CHANGELOG.md)
+ * [AUTHORS](https://github.com/openresty/docker-openresty/blob/master/AUTHORS.md)
 
 [Back to TOC](#table-of-contents)
+
 
 Copyright & License
 ===================
 
-docker-openresty is licensed under the 2-clause BSD license.
+`docker-openresty` is licensed under the 2-clause BSD license.
 
-Copyright (c) 2016, Evan Wies <evan@neomantra.net>.
+Copyright (c) 2017, Evan Wies <evan@neomantra.net>.
 
 This module is licensed under the terms of the BSD license.
 
